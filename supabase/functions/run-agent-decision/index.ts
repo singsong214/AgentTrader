@@ -33,7 +33,6 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
 
     const marketDataUrl = `${supabaseUrl}/functions/v1/get-market-data`;
     const newsUrl = `${supabaseUrl}/functions/v1/get-news`;
@@ -90,13 +89,13 @@ Reason: [your reasoning in one sentence]
 
 Provide your decision:`;
 
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!anthropicApiKey) {
       const mockDecision = {
         action: 'hold',
         asset: 'N/A',
         amount: 0,
-        reason: 'OpenAI API key not configured. Running in demo mode with mock decision.'
+        reason: 'Anthropic API key not configured. Running in demo mode with mock decision.'
       };
 
       await supabaseClient.from('trades').insert({
@@ -115,7 +114,7 @@ Provide your decision:`;
         JSON.stringify({ 
           success: true, 
           decision: mockDecision,
-          message: 'Demo mode: OpenAI API key not configured'
+          message: 'Demo mode: Anthropic API key not configured'
         }),
         {
           headers: {
@@ -126,29 +125,33 @@ Provide your decision:`;
       );
     }
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4',
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 300,
         messages: [
-          { role: 'system', content: 'You are a conservative crypto trading AI agent.' },
-          { role: 'user', content: prompt }
+          { 
+            role: 'user', 
+            content: `You are a conservative crypto trading AI agent.\n\n${prompt}` 
+          }
         ],
-        temperature: 0.7,
-        max_tokens: 200
+        temperature: 0.7
       })
     });
 
-    if (!openaiResponse.ok) {
-      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
+    if (!anthropicResponse.ok) {
+      const errorText = await anthropicResponse.text();
+      throw new Error(`Anthropic API error: ${anthropicResponse.status} - ${errorText}`);
     }
 
-    const openaiData = await openaiResponse.json();
-    const aiResponse = openaiData.choices[0].message.content;
+    const anthropicData = await anthropicResponse.json();
+    const aiResponse = anthropicData.content[0].text;
 
     const actionMatch = aiResponse.match(/Action:\s*([^\n]+)/i);
     const assetMatch = aiResponse.match(/Asset:\s*([^\n]+)/i);
